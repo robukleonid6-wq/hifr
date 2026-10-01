@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Screenshot Key Cipher — Дешифрование</title>
+<style>
+  :root{
+    --bg:#150405;
+    --bg2:#2a080a;
+    --accent:#ff3b3b;
+    --accent-dim:#c02222;
+    --accent-glow:rgba(255,59,59,.35);
+    --text:#ffd9d9;
+    --muted:#a05c5c;
+    --ok:#ff8080;
+    --card:rgba(46,10,12,.78);
+    --border:rgba(255,59,59,.28);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Consolas','Courier New',monospace;
+    background:radial-gradient(ellipse at 50% -20%, var(--bg2) 0%, var(--bg) 60%);
+    color:var(--text);
+    min-height:100vh;
+    overflow-x:hidden;
+  }
+  #matrix{position:fixed;inset:0;z-index:0;opacity:.16;pointer-events:none}
+  .wrap{position:relative;z-index:1;max-width:820px;margin:0 auto;padding:32px 20px 80px}
+
+  header{text-align:center;padding:30px 0 10px}
+  .logo{
+    font-size:clamp(22px,4vw,34px);font-weight:700;letter-spacing:6px;
+    color:var(--accent);
+    text-shadow:0 0 12px var(--accent-glow),0 0 42px var(--accent-glow);
+    animation:flicker 3.5s infinite;
+  }
+  .sub{color:var(--muted);font-size:13px;letter-spacing:3px;margin-top:8px;text-transform:uppercase}
+  @keyframes flicker{0%,100%{opacity:1}90%{opacity:1}91%{opacity:.5}92%{opacity:1}95%{opacity:.65}96%{opacity:1}}
+
+  .step{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:24px;
+    margin-top:26px;
+    backdrop-filter:blur(6px);
+    box-shadow:0 0 30px rgba(0,0,0,.5), inset 0 0 40px rgba(255,59,59,.04);
+    opacity:0;transform:translateY(18px);
+    transition:opacity .6s ease, transform .6s ease;
+  }
+  .step.visible{opacity:1;transform:none}
+  .step-title{
+    font-size:13px;letter-spacing:3px;color:var(--accent);
+    text-transform:uppercase;margin-bottom:14px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .step-num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;
+    border:1px solid var(--accent);font-size:12px;
+    box-shadow:0 0 10px var(--accent-glow);
+  }
+
+  #dropzone{
+    border:2px dashed var(--border);
+    border-radius:10px;
+    padding:38px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:all .3s ease;
+  }
+  #dropzone:hover,#dropzone.drag{
+    border-color:var(--accent);
+    background:rgba(255,59,59,.06);
+    box-shadow:inset 0 0 30px rgba(255,59,59,.08);
+  }
+  #dropzone .dz-icon{font-size:40px;margin-bottom:10px;filter:drop-shadow(0 0 8px var(--accent-glow))}
+  #dropzone .dz-main{font-size:16px;color:var(--text)}
+  #dropzone .dz-hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .key-info{display:none;align-items:center;gap:16px;margin-top:6px}
+  .key-info img{
+    width:88px;height:88px;object-fit:cover;border-radius:8px;
+    border:1px solid var(--accent);box-shadow:0 0 16px var(--accent-glow);
+  }
+  .key-meta{font-size:13px;line-height:1.9;color:var(--muted)}
+  .key-meta b{color:var(--accent)}
+  .fingerprint{word-break:break-all;color:var(--accent-dim)}
+
+  textarea{
+    width:100%;min-height:110px;resize:vertical;
+    background:rgba(0,0,0,.4);
+    border:1px solid var(--border);border-radius:8px;
+    color:var(--text);font-family:inherit;font-size:14px;
+    padding:14px;outline:none;transition:all .3s;
+  }
+  textarea:focus{border-color:var(--accent);box-shadow:0 0 14px var(--accent-glow)}
+
+  .btn{
+    display:inline-block;margin-top:16px;
+    background:transparent;color:var(--accent);
+    border:1px solid var(--accent);border-radius:8px;
+    font-family:inherit;font-size:15px;font-weight:700;letter-spacing:2px;
+    padding:13px 34px;cursor:pointer;text-transform:uppercase;
+    transition:all .25s ease;
+  }
+  .btn:hover{
+    background:var(--accent);color:#1c0304;
+    box-shadow:0 0 26px var(--accent-glow);
+    transform:translateY(-2px);
+  }
+  .btn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none;background:transparent;color:var(--accent)}
+  .btn-ghost{border-style:dashed}
+
+  #process{
+    display:none;margin-top:26px;
+    background:rgba(0,0,0,.55);
+    border:1px solid var(--border);border-radius:12px;padding:22px;
+  }
+  #process.active{display:block;animation:fadeIn .4s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  #log{font-size:13px;line-height:2;min-height:150px;color:var(--muted)}
+  #log .ok{color:var(--ok)}
+  .cursor{display:inline-block;width:9px;height:15px;background:var(--accent);
+    vertical-align:middle;animation:blink .8s steps(1) infinite;box-shadow:0 0 8px var(--accent-glow)}
+  @keyframes blink{50%{opacity:0}}
+  .progress{height:6px;background:rgba(255,59,59,.12);border-radius:3px;margin-top:14px;overflow:hidden}
+  #bar{height:100%;width:0%;background:linear-gradient(90deg,var(--accent-dim),var(--accent));
+    box-shadow:0 0 12px var(--accent-glow);transition:width .35s ease;border-radius:3px}
+  .hexstream{font-size:11px;color:var(--muted);word-break:break-all;margin-top:12px;
+    max-height:64px;overflow:hidden;line-height:1.6}
+
+  #output-block{display:none;margin-top:26px}
+  #output-block.active{display:block;animation:fadeIn .5s ease}
+  #out{
+    width:100%;min-height:120px;
+    background:rgba(26,4,5,.65);
+    border:1px solid var(--accent);border-radius:8px;
+    color:var(--ok);font-family:inherit;font-size:15px;line-height:1.7;
+    padding:14px;word-break:break-word;
+    box-shadow:inset 0 0 24px rgba(255,59,59,.07),0 0 18px var(--accent-glow);
+  }
+  .out-label{font-size:13px;letter-spacing:2px;color:var(--accent);margin-bottom:10px;text-transform:uppercase}
+  #copy-msg{font-size:12px;color:var(--muted);margin-top:8px;height:16px}
+
+  #error-block{display:none;margin-top:26px}
+  #error-block.active{display:block;animation:shake .5s ease}
+  @keyframes shake{0%,100%{transform:none}20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+  #err-box{
+    border:1px solid var(--accent);border-radius:8px;
+    background:rgba(60,6,8,.6);
+    padding:18px;font-size:14px;line-height:1.9;color:var(--ok);
+    box-shadow:0 0 24px var(--accent-glow);
+  }
+  #err-box .err-title{font-weight:700;letter-spacing:2px;color:var(--accent);margin-bottom:6px}
+
+  #go-encrypt{
+    display:none;margin-top:30px;text-align:center;
+  }
+  #go-encrypt.active{display:block;animation:fadeIn .6s ease}
+  #go-encrypt a{
+    display:inline-block;text-decoration:none;
+    font-size:15px;font-weight:700;letter-spacing:3px;text-transform:uppercase;
+    color:var(--accent);border:1px solid var(--accent);
+    padding:14px 40px;border-radius:10px;
+    transition:all .25s;
+  }
+  #go-encrypt a:hover{
+    background:var(--accent);color:#1c0304;
+    box-shadow:0 0 30px var(--accent-glow);
+  }
+  footer{text-align:center;color:var(--muted);font-size:11px;margin-top:60px;letter-spacing:2px}
+  .err{color:var(--accent)!important;text-shadow:0 0 10px var(--accent-glow)}
+</style>
+<base target="_blank">
+</head>
+<body>
+<canvas id="matrix"></canvas>
+<div class="wrap">
+  <header>
+    <div class="logo">SCREENSHOT KEY CIPHER</div>
+    <div class="sub">Режим дешифрования · проверка целостности HMAC</div>
+  </header>
+
+  <!-- ШАГ 1: ключ -->
+  <section class="step visible" id="step1">
+    <div class="step-title"><span class="step-num">1</span> Ключ-изображение получателя</div>
+    <div id="dropzone" tabindex="0">
+      <div class="dz-icon">🔓</div>
+      <div class="dz-main">Вставьте картинку-ключ — <b>Ctrl+V</b></div>
+      <div class="dz-hint">должна быть ТА ЖЕ картинка, что при шифровании — байт в байт</div>
+      <input type="file" id="file-input" accept="image/*" hidden>
+    </div>
+    <div class="key-info" id="key-info">
+      <img id="key-thumb" alt="ключ">
+      <div class="key-meta">
+        Имя файла: <b id="key-name"></b><br>
+        Размер ключа: <b id="key-size"></b> байт<br>
+        Отпечаток SHA-256: <span class="fingerprint" id="key-fp"></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ШАГ 2: шифротекст -->
+  <section class="step" id="step2">
+    <div class="step-title"><span class="step-num">2</span> Шифротекст (Base64)</div>
+    <textarea id="msg" placeholder="Вставьте сюда строку base64, полученную при шифровании…" disabled></textarea>
+    <button class="btn" id="btn-decrypt" disabled>Расшифровать ▸</button>
+  </section>
+
+  <!-- АНИМАЦИЯ -->
+  <div id="process">
+    <div id="log"><span class="cursor"></span></div>
+    <div class="progress"><div id="bar"></div></div>
+    <div class="hexstream" id="hexstream"></div>
+  </div>
+
+  <!-- ОШИБКА -->
+  <div id="error-block">
+    <div id="err-box">
+      <div class="err-title">✖ ДОСТУП ЗАПРЕЩЁН — HMAC НЕ СОШЁЛСЯ</div>
+      <div id="err-text"></div>
+      <button class="btn btn-ghost" id="btn-clear" style="margin-top:14px">⟲ Очистить и начать заново</button>
+    </div>
+  </div>
+
+  <!-- ШАГ 3: результат -->
+  <section id="output-block">
+    <div class="out-label">▣ Открытый текст</div>
+    <div id="out"></div>
+    <button class="btn btn-ghost" id="btn-copy">⧉ Скопировать</button>
+    <div id="copy-msg"></div>
+  </section>
+
+  <div id="go-encrypt">
+    <a href="index.html">◂ Вернуться к шифрованию</a>
+  </div>
+
+  <footer>проверка HMAC-SHA256 · восстановление гаммы · XOR · формат совместим с cipher.js</footer>
+</div>
+
+<script>
+"use strict";
+/* ═══════════ Криптография (Web Crypto, совместимо с cipher.js) ═══════════ */
+const NONCE_LEN = 16, MAC_LEN = 16, BLOCK = 32;
+
+const u8 = a => new Uint8Array(a);
+function concat(a, b){ const r = new Uint8Array(a.length + b.length); r.set(a,0); r.set(b,a.length); return r; }
+async function sha256(data){ return u8(await crypto.subtle.digest("SHA-256", data)); }
+async function hmacSha256(key, data){
+  const k = await crypto.subtle.importKey("raw", key, {name:"HMAC", hash:"SHA-256"}, false, ["sign"]);
+  return u8(await crypto.subtle.sign("HMAC", k, data));
+}
+async function keystream(keyBytes, nonce, length){
+  const out = new Uint8Array(length); let offset = 0, counter = 0;
+  while(offset < length){
+    const chunk = new Uint8Array(keyBytes.length + nonce.length + 1);
+    chunk.set(keyBytes, 0); chunk.set(nonce, keyBytes.length);
+    chunk[keyBytes.length + nonce.length] = counter & 0xff;
+    const blk = await sha256(chunk);
+    const n = Math.min(BLOCK, length - offset);
+    out.set(blk.subarray(0, n), offset);
+    offset += n; counter++;
+  }
+  return out;
+}
+function fromBase64(b64){
+  const bin = atob(b64.trim().replace(/\s+/g, ""));
+  const r = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) r[i] = bin.charCodeAt(i);
+  return r;
+}
+async function decryptMessage(tokenB64, keyBytes){
+  const blob = fromBase64(tokenB64);
+  if(blob.length <= NONCE_LEN + MAC_LEN)
+    throw new Error("SHORT");
+  const nonce  = blob.subarray(0, NONCE_LEN);
+  const mac    = blob.subarray(blob.length - MAC_LEN);
+  const cipher = blob.subarray(NONCE_LEN, blob.length - MAC_LEN);
+  const macCheck = (await hmacSha256(keyBytes, concat(nonce, cipher))).subarray(0, MAC_LEN);
+  // постоянное время сравнения, как timingSafeEqual в Node
+  let diff = 0;
+  for(let i=0;i<MAC_LEN;i++) diff |= mac[i] ^ macCheck[i];
+  if(diff !== 0) throw new Error("MAC");
+  const gamma = await keystream(keyBytes, nonce, cipher.length);
+  const plain = cipher.map((b,i) => b ^ gamma[i]);
+  return { plain: new TextDecoder().decode(plain), cipher, nonce };
+}
+
+/* ═══════════ Фон: красный цифровой дождь ═══════════ */
+const canvas = document.getElementById("matrix"), ctx = canvas.getContext("2d");
+let cols, drops;
+function initMatrix(){
+  canvas.width = innerWidth; canvas.height = innerHeight;
+  cols = Math.floor(canvas.width / 16);
+  drops = Array.from({length: cols}, () => Math.random() * canvas.height / 16);
+}
+initMatrix(); addEventListener("resize", initMatrix);
+document.getElementById("go-encrypt").classList.add("active");
+document.querySelector("#go-encrypt a").addEventListener("click", e => {
+  e.preventDefault();
+  window.location.href = "index.html";
+});
+const glyphs = "0101ΧΨΩДЕШΞЯДИР∅";
+setInterval(() => {
+  ctx.fillStyle = "rgba(21,4,5,.12)"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font = "14px monospace"; ctx.fillStyle = "#ff3b3b";
+  drops.forEach((y,i) => {
+    ctx.fillText(glyphs[Math.random()*glyphs.length|0], i*16, y*16);
+    drops[i] = (y*16 > canvas.height && Math.random() > .975) ? 0 : y + 1;
+  });
+}, 60);
+
+/* ═══════════ Загрузка ключа ═══════════ */
+let keyBytes = null;
+const dz = document.getElementById("dropzone"),
+      fi = document.getElementById("file-input");
+
+async function acceptImage(file){
+  if(!file || !file.type.startsWith("image/")) return;
+  keyBytes = u8(await file.arrayBuffer());
+  const fp = (await sha256(keyBytes)).reduce((s,b)=> s + b.toString(16).padStart(2,"0"), "");
+  document.getElementById("key-thumb").src = URL.createObjectURL(file);
+  document.getElementById("key-name").textContent = file.name;
+  document.getElementById("key-size").textContent = keyBytes.length.toLocaleString("ru-RU");
+  document.getElementById("key-fp").textContent = fp.slice(0,32) + "…";
+  dz.style.display = "none";
+  document.getElementById("key-info").style.display = "flex";
+  document.getElementById("msg").disabled = false;
+  document.getElementById("btn-decrypt").disabled = false;
+  document.getElementById("step2").classList.add("visible");
+  document.getElementById("msg").focus();
+}
+document.addEventListener("paste", e => {
+  const item = [...(e.clipboardData||{}).items].find(i => i.type.startsWith("image/"));
+  if(item){ e.preventDefault(); acceptImage(item.getAsFile()); }
+});
+dz.addEventListener("click", () => fi.click());
+dz.addEventListener("keydown", e => { if(e.key === "Enter") fi.click(); });
+fi.addEventListener("change", () => acceptImage(fi.files[0]));
+["dragover","dragenter"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("drag"); }));
+["dragleave","drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("drag"); }));
+dz.addEventListener("drop", e => acceptImage(e.dataTransfer.files[0]));
+
+/* ═══════════ Анимация ═══════════ */
+const logEl = document.getElementById("log"), bar = document.getElementById("bar"),
+      hexEl = document.getElementById("hexstream"), proc = document.getElementById("process");
+function logLine(text, isErr){
+  const cur = logEl.querySelector(".cursor"); if(cur) cur.remove();
+  const div = document.createElement("div");
+  if(isErr) div.className = "err"; else div.classList.add("ok");
+  div.innerHTML = (isErr ? "✖ " : "✔ ") + text + ' <span class="cursor"></span>';
+  logEl.appendChild(div);
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function setBar(p){ bar.style.width = p + "%"; }
+function hexRain(ms){
+  return new Promise(res => {
+    const t0 = performance.now();
+    (function tick(){
+      let s = "";
+      for(let i=0;i<4;i++)
+        s += Array.from(crypto.getRandomValues(new Uint8Array(16)))
+              .map(b => b.toString(16).padStart(2,"0")).join("") + " ";
+      hexEl.textContent = s;
+      (performance.now() - t0 < ms) ? requestAnimationFrame(tick) : res();
+    })();
+  });
+}
+
+/* ═══════════ Дешифрование ═══════════ */
+document.getElementById("btn-decrypt").addEventListener("click", async () => {
+  const token = document.getElementById("msg").value;
+  proc.classList.add("active"); logEl.innerHTML = '<span class="cursor"></span>';
+  hexEl.textContent = ""; setBar(0);
+  document.getElementById("output-block").classList.remove("active");
+  document.getElementById("error-block").classList.remove("active");
+  document.getElementById("copy-msg").textContent = "";
+
+  if(!token.trim()){
+    logLine("Пустой шифротекст — вставьте строку base64", true);
+    return;
+  }
+  logLine("Ключ загружен: " + keyBytes.length.toLocaleString("ru-RU") + " байт");
+  await sleep(400); setBar(15);
+  logLine("Разбор пакета: nonce + шифротекст + MAC…");
+  await sleep(350); setBar(30);
+
+  let r;
+  try{
+    r = await decryptMessage(token, keyBytes);
+  }catch(e){
+    if(e.message === "SHORT"){
+      logLine("Шифротекст слишком короткий — скопируйте строку полностью", true);
+      setBar(100);
+      return;
+    }
+    // HMAC не сошёлся
+    await hexRain(600); setBar(70);
+    logLine("Сверка HMAC-SHA256…", true);
+    await sleep(500); setBar(100);
+    logLine("HMAC НЕ СОШЁЛСЯ — ключ отклонён", true);
+    document.getElementById("err-text").innerHTML =
+      "Картинка-ключ отличается от той, что использовалась при шифровании,<br>" +
+      "или шифротекст повреждён / скопирован не полностью.<br>" +
+      "Проверьте, что файл ключа — тот же, байт в байт.";
+    document.getElementById("error-block").classList.add("active");
+    document.getElementById("go-encrypt").classList.add("active");
+    return;
+  }
+
+  logLine("HMAC сошёлся — ключ верный, данные не повреждены");
+  await sleep(350); setBar(55);
+  logLine("Восстановление гаммы из ключа и nonce…");
+  await hexRain(800); setBar(80);
+  logLine("Обратный XOR: " + r.cipher.length + " байт");
+  await sleep(350); setBar(100);
+  logLine("Дешифрование завершено успешно");
+
+  const out = document.getElementById("out");
+  document.getElementById("output-block").classList.add("visible");
+  document.getElementById("output-block").classList.add("active");
+  out.textContent = "";
+  let i = 0;
+  await new Promise(res => {
+    (function type(){
+      i += Math.max(3, Math.round(r.plain.length / 50));
+      out.textContent = r.plain.slice(0, i);
+      i < r.plain.length ? requestAnimationFrame(type) : res();
+    })();
+  });
+  out.textContent = r.plain;
+});
+
+/* ═══════════ Копирование ═══════════ */
+/* ═══════════ Очистка после ошибки ═══════════ */
+document.getElementById("btn-clear").addEventListener("click", () => {
+  keyBytes = null;
+  // сброс ключа: возвращаем зону вставки
+  dz.style.display = "";
+  document.getElementById("key-info").style.display = "none";
+  document.getElementById("key-thumb").src = "";
+  document.getElementById("key-name").textContent = "";
+  document.getElementById("key-size").textContent = "";
+  document.getElementById("key-fp").textContent = "";
+  fi.value = "";
+  // сброс полей и состояний
+  const msg = document.getElementById("msg");
+  msg.value = ""; msg.disabled = true;
+  document.getElementById("btn-decrypt").disabled = true;
+  document.getElementById("err-text").innerHTML = "";
+  document.getElementById("error-block").classList.remove("active");
+  document.getElementById("output-block").classList.remove("active");
+  document.getElementById("out").textContent = "";
+  document.getElementById("copy-msg").textContent = "";
+  proc.classList.remove("active");
+  logEl.innerHTML = '<span class="cursor"></span>';
+  hexEl.textContent = ""; setBar(0);
+  document.getElementById("step2").classList.remove("visible");
+  document.getElementById("step1").scrollIntoView({behavior:"smooth"});
+});
+
+document.getElementById("btn-copy").addEventListener("click", async () => {
+  const t = document.getElementById("out").textContent;
+  try{ await navigator.clipboard.writeText(t); }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = t; document.body.appendChild(ta); ta.select();
+    document.execCommand("copy"); ta.remove();
+  }
+  document.getElementById("copy-msg").textContent = "✔ Скопировано в буфер обмена";
+});
+</script>
+</body>
+</html>
